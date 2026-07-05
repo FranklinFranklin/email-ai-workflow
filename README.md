@@ -2,7 +2,7 @@
 
 ---
 
-## Wat doet dit? (uitleg voor iedereen)
+## Hoe werkt het?
 
 Stel je voor: je krijgt elke dag heel veel e-mails op je werk.
 Sommige zijn vragen, sommige zijn klachten, sommige gaan over facturen.
