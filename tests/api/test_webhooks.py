@@ -49,7 +49,8 @@ def _make_pubsub_body(email: str = "test@bedrijf.nl", history_id: str = "12345")
 
 def _valid_token() -> str:
     """Return the dedicated Pub/Sub verification token used by the test environment."""
-    return "test-pubsub-token"
+    from config import settings
+    return settings.PUBSUB_VERIFICATION_TOKEN
 
 
 class TestWebhookEndpoint:

@@ -79,9 +79,10 @@ class Settings(BaseSettings):
     GMAIL_CLIENT_SECRET: str
     GMAIL_REDIRECT_URI: str
     GMAIL_PUBSUB_TOPIC: str = ""
-    # ⛔ Nooit gmail.send toevoegen
+    # ⛔ Nooit gmail.send of gmail.modify toevoegen
     GMAIL_SCOPES: list[str] = [
         "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/gmail.compose",
         "https://www.googleapis.com/auth/gmail.labels",
     ]
 

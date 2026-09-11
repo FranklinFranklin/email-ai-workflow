@@ -34,7 +34,7 @@ from agents.prompts.draft_generation import (
 from config import settings
 from security.audit import AuditAction, audit_log
 from security.injection_guard import InjectionGuard, RiskLevel
-from security.pii_detector import tokenize_pii
+from security.pii_detector import detokenize_pii, tokenize_pii
 
 logger = structlog.get_logger(__name__)
 
@@ -159,7 +159,11 @@ class DraftGenerationAgent:
             logger.warning("draft_agent_parse_failed", error=str(exc))
             return self._fallback_result(self._elapsed(start), reason="parse_error")
 
-        # ── Stap 6: Metadata invullen ─────────────────────────
+        # ── Stap 6: Metadata invullen en PII lokaal herstellen ─
+        if tokenization.token_map:
+            result.draft_text = detokenize_pii(result.draft_text, tokenization.token_map)
+            result.word_count = len(result.draft_text.split())
+
         result.model_id           = self._client._model  # provider-agnostisch
         result.processing_time_ms = self._elapsed(start)
         result.injection_risk     = guard_result.risk_level.value
@@ -250,19 +254,6 @@ class DraftGenerationAgent:
             raise exc  # opgevangen in generate() → fallback
 
         raw_text = response.text
-                    f"{self._guard.wrap_for_llm(safe_text)}"
-                ),
-            },
-        ]
-
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=messages,
-        )
-
-        raw_text = response.content[0].text.strip()
 
         # Verwijder eventuele markdown-code-fences
         if raw_text.startswith("```"):

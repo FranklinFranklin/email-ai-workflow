@@ -47,15 +47,16 @@ _BLOCKED_PATTERNS: list[tuple[str, str]] = [
     (r"act\s+as\s+(a|an|if)\s+",                           "role-injection"),
     (r"pretend\s+(to\s+be|you\s+are)",                     "role-injection"),
     (r"your\s+new\s+(role|persona|task|job)\s+is",         "role-injection"),
-    # Systeem-prompt-extractie
-    (r"(repeat|print|show|reveal)\s+(your\s+)?(system\s+)?prompt", "prompt-leak"),
-    (r"what\s+(are\s+your\s+instructions|is\s+your\s+system\s+prompt)", "prompt-leak"),
+    # Systeem-prompt-extractie — staat ook woorden als "internal" toe vóór het doelobject
+    (r"(repeat|print|show|reveal)\s+your\s+.{0,30}(prompt|instructions?|configuration)", "prompt-leak"),
+    (r"what\s+(are\s+your\s+instructions?|instructions?\s+you\s+received|is\s+your\s+system\s+prompt)", "prompt-leak"),
     # Jailbreak-pogingen
-    (r"(DAN|jailbreak|developer\s+mode|god\s+mode)",       "jailbreak"),
+    # \b = woordgrens — voorkomt false positives op "Bedankt" (bevat "dan")
+    (r"(\bDAN\b|jailbreak|developer\s+mode|god\s+mode)",   "jailbreak"),
     (r"hypothetically\s+speaking.{0,40}(send|email|forward)", "jailbreak"),
     # Indirecte data-exfiltratie
     (r"forward\s+(this|all|my)\s+(email|message|data)",    "exfiltration"),
-    (r"send\s+(a\s+copy|this)\s+to\s+",                    "exfiltration"),
+    (r"send\s+(a\s+copy|this).{0,60}(to\s+(my|external|\w+@))", "exfiltration"),
 ]
 
 _SUSPICIOUS_PATTERNS: list[tuple[str, str]] = [
@@ -155,26 +156,42 @@ class InjectionGuard:
 
     @staticmethod
     def _strip_dangerous_html(text: str) -> str:
-        """Verwijder script-tags en gevaarlijke HTML-attributen."""
-        # Script-tags volledig verwijderen (inclusief inhoud)
-        text = re.sub(
-            r"<script[^>]*>.*?</script>",
-            "[SCRIPT_VERWIJDERD]",
-            text,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
-        # Event handlers (onclick, onload, enz.)
-        text = re.sub(
-            r'\s+on\w+\s*=\s*["\'][^"\']*["\']',
+        """Verwijder script-tags, event handlers en gevaarlijke URI-schema's."""
+        if not text:
+            return text
+
+        # Herhaaldelijk gevaarlijke tags verwijderen (tegen geneste bypasses)
+        prev = None
+        current = text
+        while prev != current:
+            prev = current
+            current = re.sub(
+                r"<\s*(script|iframe|object|embed|applet|style|svg|meta|link)[^>]*>.*?</\s*\1\s*>",
+                "[GEVAARLIJKE_TAG_VERWIJDERD]",
+                current,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            current = re.sub(
+                r"<\s*(script|iframe|object|embed|applet|style|svg|meta|link)[^>]*?/?>",
+                "[GEVAARLIJKE_TAG_VERWIJDERD]",
+                current,
+                flags=re.IGNORECASE,
+            )
+
+        # Event handlers (onclick, onerror, onload, incl. zonder quotes)
+        current = re.sub(
+            r'\s+on\w+\s*=\s*(["\'][^"\']*["\']|[^\s>]+)',
             "",
-            text,
+            current,
             flags=re.IGNORECASE,
         )
-        # javascript:-protocol
-        text = re.sub(
-            r'href\s*=\s*["\']javascript:[^"\']*["\']',
-            'href="#"',
-            text,
+
+        # javascript: en data: URI protocollen in attributen
+        current = re.sub(
+            r'(href|src|action)\s*=\s*["\']?\s*(javascript|vbscript|data\s*:\s*text/html)[^"\'>\s]*["\']?',
+            r'\1="#"',
+            current,
             flags=re.IGNORECASE,
         )
-        return text
+
+        return current

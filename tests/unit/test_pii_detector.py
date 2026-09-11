@@ -35,11 +35,15 @@ def mock_presidio(monkeypatch):
     mock_anonymizer = MagicMock()
     mock_anonymizer.anonymize.return_value = mock_anon_result
 
+    monkeypatch.setattr("security.pii_detector._default_detector", None)
+
     with (
         patch("security.pii_detector.AnalyzerEngine", return_value=mock_analyzer),
         patch("security.pii_detector.AnonymizerEngine", return_value=mock_anonymizer),
     ):
         yield mock_analyzer, mock_anonymizer
+
+    monkeypatch.setattr("security.pii_detector._default_detector", None)
 
 
 class TestPIIDetector:
@@ -84,6 +88,24 @@ class TestPIIDetector:
         text = "Bericht van [NAAM_001] via [EMAIL_001]."
         result = detector.detokenize(text, token_map)
         assert result == "Bericht van Jan Janssen via jan@bedrijf.nl."
+
+    def test_tokenize_multiple_entities_of_same_type(self):
+        detector = PIIDetector()
+        r1 = MagicMock(entity_type="PERSON", start=6, end=17, score=0.9)
+        r2 = MagicMock(entity_type="PERSON", start=21, end=36, score=0.9)
+        detector._analyzer.analyze = MagicMock(return_value=[r1, r2])
+
+        text = "Beste Jan Janssen en Pieter de Vries."
+        result = detector.tokenize(text)
+        assert "[NAAM_001]" in result.anonymized_text
+        assert "[NAAM_002]" in result.anonymized_text
+        assert result.token_map["[NAAM_001]"] == "Jan Janssen"
+        assert result.token_map["[NAAM_002]"] == "Pieter de Vries"
+        assert "Jan Janssen" not in result.anonymized_text
+        assert "Pieter de Vries" not in result.anonymized_text
+
+        restored = detector.detokenize(result.anonymized_text, result.token_map)
+        assert restored == text
 
 
 class TestModuleFunctions:

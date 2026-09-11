@@ -108,7 +108,14 @@ def audit_log(
             metadata={"draft_version": draft.version},
         )
     """
-    safe_metadata = _sanitize_metadata(metadata or {})
+    _RESERVED = frozenset({
+        "audit", "ts", "action", "actor_id", "entity_type",
+        "entity_id", "request_id", "ip_address",
+    })
+    safe_metadata = {
+        k: v for k, v in _sanitize_metadata(metadata or {}).items()
+        if k not in _RESERVED
+    }
 
     logger.info(
         action.value,

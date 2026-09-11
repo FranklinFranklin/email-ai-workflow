@@ -131,46 +131,58 @@ class PIIDetector:
         counters: dict[str, int] = {}
         token_map: TokenMap = {}
 
-        results = self._analyzer.analyze(
-            text=text,
-            entities=ENTITY_TYPES,
-            language=self.language,
-            score_threshold=0.6,
-        )
+        try:
+            results = self._analyzer.analyze(
+                text=text,
+                entities=ENTITY_TYPES,
+                language=self.language,
+                score_threshold=0.6,
+            )
+        except Exception as exc:
+            logger.error("pii_analyzer_failed", error=str(exc))
+            from config import settings
+            if getattr(settings, "APP_ENV", "") == "production":
+                raise RuntimeError("PII-detectie mislukt in productieomgeving") from exc
+            return TokenizationResult(anonymized_text=text)
 
         if not results:
             return TokenizationResult(anonymized_text=text)
 
-        # Bouw operators per entiteitstype
-        operators: dict[str, OperatorConfig] = {}
-        for result in results:
+        # Filter overlappende spans (prioriteer hogere score, dan langste span)
+        sorted_results = sorted(results, key=lambda r: (r.start, -r.score, -(r.end - r.start)))
+        valid_results: list[RecognizerResult] = []
+        last_end = -1
+        for r in sorted_results:
+            if r.start >= last_end:
+                valid_results.append(r)
+                last_end = r.end
+
+        # Wijs tokens toe per entiteit van links naar rechts
+        replacements: list[tuple[int, int, str]] = []
+        for result in valid_results:
             entity = result.entity_type
             label = _ENTITY_LABEL.get(entity, _DEFAULT_LABEL)
             counters[entity] = counters.get(entity, 0) + 1
             token = f"[{label}_{counters[entity]:03d}]"
             original = text[result.start:result.end]
             token_map[token] = original
+            replacements.append((result.start, result.end, token))
 
-            operators[entity] = OperatorConfig(
-                "replace", {"new_value": token}
-            )
-
-        anonymized = self._anonymizer.anonymize(
-            text=text,
-            analyzer_results=results,
-            operators=operators,
-        )
+        # Vervang van achter naar voor (right to left) zodat karakter-indices intact blijven
+        anonymized_text = text
+        for start, end, token in sorted(replacements, key=lambda x: x[0], reverse=True):
+            anonymized_text = anonymized_text[:start] + token + anonymized_text[end:]
 
         logger.debug(
             "pii_tokenized",
-            entity_count=len(results),
+            entity_count=len(valid_results),
             # Nooit de originele tekst of tokenmap loggen
         )
 
         return TokenizationResult(
-            anonymized_text=anonymized.text,
+            anonymized_text=anonymized_text,
             token_map=token_map,
-            entity_count=len(results),
+            entity_count=len(valid_results),
         )
 
     def detokenize(self, text: str, token_map: TokenMap) -> str:

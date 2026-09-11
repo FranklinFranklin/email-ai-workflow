@@ -69,9 +69,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "default-src 'none'; frame-ancestors 'none'"
         )
 
-        # Verberg servertechnologie
+        # Verberg servertechnologie — .pop() bestaat niet op MutableHeaders
         response.headers["Server"] = "emailai"
-        response.headers.pop("X-Powered-By", None)
+        if "X-Powered-By" in response.headers:
+            del response.headers["X-Powered-By"]
 
         return response
 
@@ -176,15 +177,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
-        self._redis: aioredis.Redis | None = None
 
     async def _get_redis(self) -> aioredis.Redis:
-        if self._redis is None:
-            self._redis = aioredis.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-            )
-        return self._redis
+        return aioredis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+        )
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
