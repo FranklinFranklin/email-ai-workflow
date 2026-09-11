@@ -13,6 +13,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.middleware import (
+    AuditLoggingMiddleware,
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+    SecurityHeadersMiddleware,
+)
+from api.v1.routes.webhooks import router as webhooks_router
 from config import settings
 
 logger = structlog.get_logger(__name__)
@@ -48,12 +55,17 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AuditLoggingMiddleware)
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── Routers (worden later geregistreerd per module) ──────────
-# from api.v1.routes import emails, drafts, webhooks, health
+# from api.v1.routes import emails, drafts, health
 # app.include_router(health.router,   prefix="/api/v1", tags=["health"])
 # app.include_router(emails.router,   prefix="/api/v1", tags=["emails"])
 # app.include_router(drafts.router,   prefix="/api/v1", tags=["drafts"])
-# app.include_router(webhooks.router, prefix="/api/v1", tags=["webhooks"])
+app.include_router(webhooks_router, prefix="/api/v1", tags=["webhooks"])
 
 
 @app.get("/healthz", tags=["health"])

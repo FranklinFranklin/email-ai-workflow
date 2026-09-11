@@ -72,7 +72,7 @@ async def get_current_user(
         if not user_id or not account_id or not role:
             raise credentials_exc
 
-    except JWTError:
+    except (JWTError, ValueError, TypeError):
         raise credentials_exc
 
     return AuthenticatedUser(

@@ -14,6 +14,7 @@ Middleware-volgorde in main.py (buitenste = eerst uitgevoerd):
     5. CORSMiddleware              ← FastAPI ingebouwd
 """
 
+import re
 import time
 import uuid
 from typing import Callable

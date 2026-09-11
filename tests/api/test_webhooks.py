@@ -26,6 +26,7 @@ def env(monkeypatch):
     monkeypatch.setenv("GMAIL_CLIENT_ID", "test")
     monkeypatch.setenv("GMAIL_CLIENT_SECRET", "test")
     monkeypatch.setenv("GMAIL_REDIRECT_URI", "http://localhost/callback")
+    monkeypatch.setenv("PUBSUB_VERIFICATION_TOKEN", "test-pubsub-token")
 
 
 @pytest.fixture
@@ -47,25 +48,29 @@ def _make_pubsub_body(email: str = "test@bedrijf.nl", history_id: str = "12345")
 
 
 def _valid_token() -> str:
-    """Genereer het verwachte verificatietoken (eerste 32 tekens van APP_SECRET_KEY)."""
-    return "test-secret-key-minimaal-32-tekens!!"[:32]
+    """Return the dedicated Pub/Sub verification token used by the test environment."""
+    return "test-pubsub-token"
 
 
 class TestWebhookEndpoint:
     def test_valid_notification_returns_200(self, client):
         token = _valid_token()
         resp = client.post(
-            f"{_WEBHOOK_URL}?token={token}",
+            _WEBHOOK_URL,
             content=_make_pubsub_body(),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
         )
         assert resp.status_code == 200
 
     def test_valid_notification_returns_accepted(self, client):
         token = _valid_token()
         resp = client.post(
-            f"{_WEBHOOK_URL}?token={token}",
+            _WEBHOOK_URL,
             content=_make_pubsub_body(),
+            headers={"Authorization": f"Bearer {token}"},
         )
         data = resp.json()
         assert data["status"] == "accepted"
@@ -76,8 +81,9 @@ class TestWebhookEndpoint:
         Inhoud geeft 'ignored' aan.
         """
         resp = client.post(
-            f"{_WEBHOOK_URL}?token=fout-token",
+            _WEBHOOK_URL,
             content=_make_pubsub_body(),
+            headers={"Authorization": "Bearer fout-token"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "ignored"
@@ -89,15 +95,20 @@ class TestWebhookEndpoint:
 
     def test_empty_body_returns_200_empty(self, client):
         token = _valid_token()
-        resp = client.post(f"{_WEBHOOK_URL}?token={token}", content=b"")
+        resp = client.post(
+            _WEBHOOK_URL,
+            content=b"",
+            headers={"Authorization": f"Bearer {token}"},
+        )
         assert resp.status_code == 200
         assert resp.json()["status"] == "empty"
 
     def test_malformed_json_returns_200_parse_error(self, client):
         token = _valid_token()
         resp = client.post(
-            f"{_WEBHOOK_URL}?token={token}",
+            _WEBHOOK_URL,
             content=b"dit is geen json {{{",
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "parse_error"
@@ -112,7 +123,11 @@ class TestWebhookEndpoint:
             "message": {"data": data},
             "subscription": "projects/test/subscriptions/sub",
         }).encode()
-        resp = client.post(f"{_WEBHOOK_URL}?token={token}", content=body)
+        resp = client.post(
+            _WEBHOOK_URL,
+            content=body,
+            headers={"Authorization": f"Bearer {token}"},
+        )
         assert resp.status_code == 200
         assert resp.json()["status"] == "parse_error"
 
