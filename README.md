@@ -1,6 +1,6 @@
 # AI E-mail Workflow
 
----
+----
 
 ## How does it work?
 
